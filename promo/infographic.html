@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1600px; height: 900px; overflow: hidden; background: #0a0c12; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; color: #f5f5f7; }
+  .wrap {
+    width: 1600px; height: 900px; padding: 48px 56px;
+    background: radial-gradient(circle at 20% 20%, rgba(56,189,248,0.14), transparent 45%),
+                radial-gradient(circle at 82% 75%, rgba(255,91,82,0.16), transparent 48%),
+                #0a0c12;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .top { display: flex; justify-content: space-between; align-items: flex-end; }
+  .eyebrow { font-size: 18px; font-weight: 700; color: #ff6a3d; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-size: 52px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; }
+  .badge { padding: 10px 20px; border-radius: 999px; background: rgba(52,211,153,0.14); border: 1.5px solid #34d399; color: #34d399; font-size: 20px; font-weight: 700; }
+  .mid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 36px; align-items: center; flex: 1; margin: 28px 0; }
+  .card { background: rgba(22, 25, 35, 0.85); border: 1.5px solid rgba(255,255,255,0.12); border-radius: 24px; padding: 30px 32px; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+  .card-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; color: #fff; display: flex; justify-content: space-between; }
+  .card-title span { color: #9ca3af; font-size: 16px; font-weight: 500; }
+  .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .row { display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px 16px; }
+  .cap { min-width: 82px; text-align: center; padding: 7px 10px; border-radius: 10px; background: #232735; font-size: 17px; font-weight: 800; color: #fff; }
+  .cap.hot { background: #ff6a3d; }
+  .cap.blue { background: #0284c7; }
+  .r-t { font-size: 18px; font-weight: 700; }
+  .r-d { font-size: 14px; color: #9ca3af; margin-top: 2px; }
+  .right-box { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  .foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; font-size: 19px; color: #9ca3af; }
+  .foot strong { color: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="eyebrow">Dusty Switch → Couch AI Controller</div>
+      <h1>49g Joy-Con. Zero Keyboard.</h1>
+    </div>
+    <div class="badge">MIT Open Source · macOS &amp; Windows</div>
+  </div>
+
+  <div class="mid">
+    <div class="card">
+      <div class="card-title">One-Handed Symmetric Map <span>Right / Left Hot-Swap</span></div>
+      <div class="rows">
+        <div class="row"><div class="cap hot">ZR / ZL</div><div><div class="r-t">Voice Dictation</div><div class="r-d">Hold to talk + HD rumble</div></div></div>
+        <div class="row"><div class="cap hot">R / L</div><div><div class="r-t">Click &amp; Drag</div><div class="r-d">0.68× damped precision</div></div></div>
+        <div class="row"><div class="cap">Stick</div><div><div class="r-t">Dual-Zone Cursor</div><div class="r-d">Micro-aim + 2.3× 4K boost</div></div></div>
+        <div class="row"><div class="cap">R3 / L3</div><div><div class="r-t">Scroll Mode</div><div class="r-d">Press stick to toggle</div></div></div>
+        <div class="row"><div class="cap">A / →</div><div><div class="r-t">Enter (Send)</div><div class="r-d">Ship prompt to Agent</div></div></div>
+        <div class="row"><div class="cap">X / Y</div><div><div class="r-t">Switch Windows</div><div class="r-d">⌘Tab &amp; Mission Control</div></div></div>
+        <div class="row"><div class="cap blue">+ / -</div><div><div class="r-t">6-Way Radial</div><div class="r-d">Tap Undo · Hold for wheel</div></div></div>
+        <div class="row"><div class="cap blue">Flick</div><div><div class="r-t">Swipe Desktops</div><div class="r-d">6-axis IMU wrist flick</div></div></div>
+      </div>
+    </div>
+
+    <div class="card right-box">
+      <div class="card-title" style="width:100%;margin-bottom:0">Hold + / - for Cursor Radial Menu <span>No memorizing</span></div>
+      <svg viewBox="0 0 340 340" width="320" height="320">
+        <defs>
+          <filter id="glow"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/></filter>
+        </defs>
+        <g filter="url(#glow)" transform="translate(170,170)">
+          <!-- 6 sectors -->
+          <path d="M -72 -124 A 144 144 0 0 1 72 -124 L 30 -52 A 60 60 0 0 0 -30 -52 Z" fill="#ff6a3d" stroke="#fff" stroke-width="2.5"/>
+          <path d="M 76 -121 A 144 144 0 0 1 144 0 L 60 0 A 60 60 0 0 0 32 -50 Z" fill="#1d2130" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+          <path d="M 144 5 A 144 144 0 0 1 76 124 L 32 52 A 60 60 0 0 0 60 2 Z" fill="#1d2130" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+          <path d="M 72 126 A 144 144 0 0 1 -72 126 L -30 52 A 60 60 0 0 0 30 52 Z" fill="#1d2130" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+          <path d="M -76 124 A 144 144 0 0 1 -144 5 L -60 2 A 60 60 0 0 0 -32 52 Z" fill="#1d2130" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+          <path d="M -144 0 A 144 144 0 0 1 -76 -121 L -32 -50 A 60 60 0 0 0 -60 0 Z" fill="#1d2130" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+
+          <text x="0" y="-96" text-anchor="middle" fill="#fff" font-size="18" font-weight="800">Copy</text>
+          <text x="0" y="-76" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="13" font-weight="700">⌘C</text>
+
+          <text x="88" y="-44" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">Select All</text>
+          <text x="88" y="-25" text-anchor="middle" fill="#9ca3af" font-size="13">⌘A</text>
+
+          <text x="88" y="48" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">Cut</text>
+          <text x="88" y="67" text-anchor="middle" fill="#9ca3af" font-size="13">⌘X</text>
+
+          <text x="0" y="96" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">Paste</text>
+          <text x="0" y="115" text-anchor="middle" fill="#9ca3af" font-size="13">⌘V</text>
+
+          <text x="-88" y="48" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">Close</text>
+          <text x="-88" y="67" text-anchor="middle" fill="#9ca3af" font-size="13">⌘W</text>
+
+          <text x="-88" y="-44" text-anchor="middle" fill="#fff" font-size="17" font-weight="700">Delete</text>
+          <text x="-88" y="-25" text-anchor="middle" fill="#9ca3af" font-size="13">⌫</text>
+
+          <circle cx="0" cy="0" r="54" fill="#10121a" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+          <text x="0" y="5" text-anchor="middle" fill="#fff" font-size="17" font-weight="800">Hold +</text>
+        </g>
+      </svg>
+      <div style="font-size:16px;color:#9ca3af;text-align:center">Works with <strong style="color:#fff">Wispr Flow · Superwhisper · Any ASR</strong></div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div><strong>No soldering. No firmware flashing.</strong> Slide back onto your Switch anytime.</div>
+    <div><strong>github.com/tx0-zero/joycon-couch</strong></div>
+  </div>
+</div>
+</body>
+</html>
