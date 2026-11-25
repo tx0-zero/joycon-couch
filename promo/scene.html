@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #090a0f; }
+  canvas { display: block; width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 1920, H = 1080;
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOutCubic = (t) => 1 - Math.pow(1 - clamp(t), 3);
+const easeInOutCubic = (t) => { t = clamp(t); return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; };
+const seg = (t, t0, t1) => clamp((t - t0) / (t1 - t0));
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+function drawBackground(t) {
+  const g = ctx.createRadialGradient(W * 0.5, H * 0.35, 80, W * 0.5, H * 0.5, W * 0.78);
+  g.addColorStop(0, '#181c2b');
+  g.addColorStop(0.55, '#0d0f17');
+  g.addColorStop(1, '#07080c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle ambient glow
+  const g1 = ctx.createRadialGradient(W * 0.78, H * 0.52, 20, W * 0.78, H * 0.52, 520);
+  g1.addColorStop(0, 'rgba(255, 91, 82, 0.14)');
+  g1.addColorStop(1, 'rgba(255, 91, 82, 0)');
+  ctx.fillStyle = g1;
+  ctx.fillRect(0, 0, W, H);
+
+  const g2 = ctx.createRadialGradient(W * 0.25, H * 0.45, 20, W * 0.25, H * 0.45, 560);
+  g2.addColorStop(0, 'rgba(56, 189, 248, 0.11)');
+  g2.addColorStop(1, 'rgba(56, 189, 248, 0)');
+  ctx.fillStyle = g2;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 64) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 64) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+function drawPill(x, y, text, color = '#ff6a3d', bg = 'rgba(255,106,61,0.16)') {
+  ctx.save();
+  ctx.font = '600 22px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+  const tw = ctx.measureText(text).width;
+  const pw = tw + 36, ph = 44;
+  roundRect(x - pw / 2, y - ph / 2, pw, ph, 22);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y + 1);
+  ctx.restore();
+}
+
+function drawJoyCon(cx, cy, scale, opts = {}) {
+  const { side = 'right', stickX = 0, stickY = 0, hot = {}, tilt = 0, rumble = 0, alpha = 1 } = opts;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const jitterX = rumble > 0 ? Math.sin(rumble * 55) * 6 * rumble : 0;
+  ctx.translate(cx + jitterX, cy);
+  ctx.rotate(tilt);
+  ctx.scale(scale, scale);
+
+  // Rumble waves
+  if (rumble > 0.05) {
+    for (let i = 0; i < 2; i++) {
+      const r = 130 + (1 - rumble) * 120 + i * 36;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 106, 61, ${rumble * 0.45 * (1 - i * 0.4)})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    }
+  }
+
+  const isLeft = side === 'left';
+  if (isLeft) ctx.scale(-1, 1);
+
+  // ZR trigger
+  ctx.beginPath();
+  ctx.moveTo(-10, -182);
+  ctx.quadraticCurveTo(58, -182, 82, -142);
+  ctx.lineTo(66, -132);
+  ctx.quadraticCurveTo(44, -162, -10, -162);
+  ctx.closePath();
+  ctx.fillStyle = hot.zr ? '#ffb020' : '#282b34';
+  ctx.fill();
+  ctx.strokeStyle = hot.zr ? '#fff' : 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // R shoulder
+  ctx.beginPath();
+  ctx.moveTo(-54, -158);
+  ctx.lineTo(36, -158);
+  ctx.quadraticCurveTo(72, -158, 86, -120);
+  ctx.lineTo(72, -114);
+  ctx.quadraticCurveTo(60, -142, 30, -142);
+  ctx.lineTo(-54, -142);
+  ctx.closePath();
+  ctx.fillStyle = hot.r ? '#ffb020' : '#323642';
+  ctx.fill();
+  ctx.strokeStyle = hot.r ? '#fff' : 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Main shell
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 40;
+  ctx.shadowOffsetY = 22;
+  roundRect(-58, -142, 146, 360, [14, 62, 62, 14]);
+  const bg = ctx.createLinearGradient(-58, -142, 88, 218);
+  if (isLeft) {
+    bg.addColorStop(0, '#1bc5ff');
+    bg.addColorStop(1, '#008fd4');
+  } else {
+    bg.addColorStop(0, '#ff655c');
+    bg.addColorStop(1, '#e03e36');
+  }
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.restore();
+
+  // Rail
+  roundRect(-68, -126, 12, 326, 4);
+  ctx.fillStyle = '#1b1d24';
+  ctx.fill();
+
+  // + / - button
+  ctx.fillStyle = hot.plus ? '#ffb020' : '#1e2028';
+  roundRect(-42, -110, 24, 8, 2); ctx.fill();
+  if (!isLeft) { roundRect(-34, -118, 8, 24, 2); ctx.fill(); }
+
+  // 4 face buttons
+  const face = [
+    { k: 'x', x: 14, y: -62, t: isLeft ? '↑' : 'X' },
+    { k: 'y', x: -22, y: -26, t: isLeft ? '←' : 'Y' },
+    { k: 'a', x: 50, y: -26, t: isLeft ? '→' : 'A' },
+    { k: 'b', x: 14, y: 10, t: isLeft ? '↓' : 'B' },
+  ];
+  for (const f of face) {
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 17, 0, Math.PI * 2);
+    ctx.fillStyle = hot[f.k] ? '#ffb020' : '#1e2028';
+    ctx.fill();
+    ctx.strokeStyle = hot[f.k] ? '#fff' : 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = hot[f.k] ? 3 : 1.5;
+    ctx.stroke();
+    ctx.save();
+    if (isLeft) { ctx.translate(f.x, f.y); ctx.scale(-1, 1); ctx.translate(-f.x, -f.y); }
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 15px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(f.t, f.x, f.y + 1);
+    ctx.restore();
+  }
+
+  // Stick well & cap
+  ctx.beginPath();
+  ctx.arc(14, 102, 38, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fill();
+  const sx = 14 + (isLeft ? -stickX : stickX) * 18;
+  const sy = 102 - stickY * 18;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 25, 0, Math.PI * 2);
+  ctx.fillStyle = hot.stick ? '#ffb020' : '#22242d';
+  ctx.fill();
+  ctx.strokeStyle = hot.stick ? '#fff' : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // Home / Capture
+  ctx.beginPath();
+  if (isLeft) roundRect(-32, 168, 24, 24, 5);
+  else ctx.arc(-20, 180, 13, 0, Math.PI * 2);
+  ctx.fillStyle = hot.home ? '#ffb020' : '#1e2028';
+  ctx.fill();
+
+  // Player 1 LED
+  ctx.beginPath();
+  ctx.arc(36, 198, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#34d399';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawDesktopWindow(x, y, w, h, title, mode, state = {}) {
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 45;
+  ctx.shadowOffsetY = 20;
+  roundRect(x, y, w, h, 18);
+  ctx.fillStyle = '#131620';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // Titlebar
+  roundRect(x, y, w, 46, [18, 18, 0, 0]);
+  ctx.fillStyle = '#1b1f2d';
+  ctx.fill();
+  const dots = ['#ff5f56', '#ffbd2e', '#27c93f'];
+  dots.forEach((c, i) => {
+    ctx.beginPath(); ctx.arc(x + 24 + i * 20, y + 23, 6.5, 0, Math.PI * 2);
+    ctx.fillStyle = c; ctx.fill();
+  });
+  ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  ctx.font = '600 16px -apple-system, Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, x + w / 2, y + 28);
+
+  ctx.textAlign = 'left';
+  if (mode === 'ide') {
+    const lines = [
+      { c: '#6b7280', t: '12  // src/api/session.ts' },
+      { c: '#93c5fd', t: '13  export async function startSession(cfg: Config) {' },
+      { c: '#e5e7eb', t: '14    const token = cfg.auth.token.trim();' },
+      { c: '#fca5a5', t: '15    // TypeError: Cannot read properties of undefined (reading "token")' },
+      { c: '#e5e7eb', t: '16    return fetchSession(token);' },
+      { c: '#93c5fd', t: '17  }' },
+    ];
+    if (state.selectProg > 0) {
+      const selW = 790 * state.selectProg;
+      roundRect(x + 42, y + 178, selW, 38, 6);
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.36)';
+      ctx.fill();
+    }
+    ctx.font = '500 21px "SF Mono", Menlo, monospace';
+    lines.forEach((l, i) => {
+      ctx.fillStyle = l.c;
+      ctx.fillText(l.t, x + 36, y + 96 + i * 38);
+    });
+    // Terminal pane
+    roundRect(x + 28, y + 335, w - 56, h - 365, 12);
+    ctx.fillStyle = '#0c0e15';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.stroke();
+    ctx.font = '500 18px "SF Mono", Menlo, monospace';
+    ctx.fillStyle = '#f87171';
+    ctx.fillText('FAIL  src/api/session.test.ts', x + 48, y + 378);
+    ctx.fillStyle = '#fca5a5';
+    ctx.fillText('  TypeError: Cannot read properties of undefined (reading "token")', x + 48, y + 412);
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText('    at startSession (src/api/session.ts:14:26)', x + 48, y + 444);
+  } else if (mode === 'agent') {
+    // AI Agent Chat UI
+    ctx.font = '600 18px -apple-system, Inter, sans-serif';
+    ctx.fillStyle = '#9ca3af';
+    ctx.fillText('AI Coding Agent · Claude Code / Cursor / Codex', x + 36, y + 88);
+
+    // Pasted snippet bubble
+    if (state.pasted) {
+      roundRect(x + 36, y + 114, w - 72, 74, 12);
+      ctx.fillStyle = '#1e2436';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(59,130,246,0.45)';
+      ctx.stroke();
+      ctx.font = '500 18px "SF Mono", Menlo, monospace';
+      ctx.fillStyle = '#fca5a5';
+      ctx.fillText('TypeError: Cannot read properties of undefined (reading "token")', x + 56, y + 157);
+    }
+
+    // Voice dictated prompt box
+    roundRect(x + 36, y + 216, w - 72, 118, 14);
+    ctx.fillStyle = state.listening ? 'rgba(255, 106, 61, 0.12)' : '#1a1e2b';
+    ctx.fill();
+    ctx.strokeStyle = state.listening ? '#ff6a3d' : 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = state.listening ? 2.5 : 1.5;
+    ctx.stroke();
+
+    const fullPrompt = 'Fix this TypeError with optional chaining and add a unit test.';
+    const typed = fullPrompt.slice(0, Math.floor(fullPrompt.length * (state.voiceProg || 0)));
+    ctx.font = '500 24px -apple-system, Inter, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(typed || (state.listening ? 'Listening via Wispr Flow / Superwhisper...' : ''), x + 58, y + 270);
+
+    // Voice waveform bars
+    if (state.listening) {
+      for (let i = 0; i < 18; i++) {
+        const bh = 8 + Math.abs(Math.sin(state.t * 14 + i * 0.7)) * 26;
+        roundRect(x + 58 + i * 12, y + 305 - bh / 2, 6, bh, 3);
+        ctx.fillStyle = '#ff6a3d';
+        ctx.fill();
+      }
+    }
+
+    // Agent reply after Enter
+    if (state.sent) {
+      roundRect(x + 36, y + 362, w - 72, 148, 14);
+      ctx.fillStyle = 'rgba(52, 211, 153, 0.10)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(52, 211, 153, 0.45)';
+      ctx.stroke();
+      ctx.font = '700 22px -apple-system, Inter, sans-serif';
+      ctx.fillStyle = '#34d399';
+      ctx.fillText('✓ Fixed in src/api/session.ts  ·  48/48 tests passing', x + 58, y + 414);
+      ctx.font = '500 19px "SF Mono", Menlo, monospace';
+      ctx.fillStyle = '#d1fae5';
+      ctx.fillText('+ const token = cfg?.auth?.token?.trim() ?? "";', x + 58, y + 462);
+    }
+  }
+}
+
+function drawRadialMenu(cx, cy, scale, activeIdx) {
+  if (scale <= 0.01) return;
+  const sectors = [
+    { label: 'Copy', key: '⌘C' },
+    { label: 'Select All', key: '⌘A' },
+    { label: 'Cut', key: '⌘X' },
+    { label: 'Paste', key: '⌘V' },
+    { label: 'Close Tab', key: '⌘W' },
+    { label: 'Delete', key: '⌫' },
+  ];
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  const rIn = 58, rOut = 152;
+  for (let i = 0; i < 6; i++) {
+    const a0 = ((i * 60 - 30 + 2.5) - 90) * Math.PI / 180;
+    const a1 = ((i * 60 + 30 - 2.5) - 90) * Math.PI / 180;
+    const hot = i === activeIdx;
+    ctx.beginPath();
+    ctx.arc(0, 0, hot ? rOut + 8 : rOut, a0, a1);
+    ctx.arc(0, 0, rIn, a1, a0, true);
+    ctx.closePath();
+    ctx.fillStyle = hot ? 'rgba(255, 106, 61, 0.94)' : 'rgba(20, 22, 30, 0.90)';
+    ctx.fill();
+    ctx.strokeStyle = hot ? '#ffffff' : 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = hot ? 3 : 1.5;
+    ctx.stroke();
+
+    const mid = ((i * 60) - 90) * Math.PI / 180;
+    const tx = Math.cos(mid) * ((rIn + rOut) / 2);
+    const ty = Math.sin(mid) * ((rIn + rOut) / 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 18px -apple-system, Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(sectors[i].label, tx, ty - 8);
+    ctx.fillStyle = hot ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)';
+    ctx.font = '600 14px "SF Mono", monospace';
+    ctx.fillText(sectors[i].key, tx, ty + 14);
+  }
+  ctx.beginPath();
+  ctx.arc(0, 0, rIn - 5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(14,16,22,0.95)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 16px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(activeIdx >= 0 ? sectors[activeIdx].label : 'Hold +', 0, 2);
+  ctx.restore();
+}
+
+function drawCursor(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(0, 32); ctx.lineTo(9, 24); ctx.lineTo(17, 36);
+  ctx.lineTo(22, 33); ctx.lineTo(14, 21); ctx.lineTo(24, 21); ctx.closePath();
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+window.renderFrame = function (t) {
+  drawBackground(t);
+
+  // Scene 1: Intro (0 - 3.0s)
+  if (t < 3.0) {
+    const p = easeOutCubic(seg(t, 0, 0.9));
+    const fadeOut = 1 - easeInOutCubic(seg(t, 2.5, 3.0));
+    ctx.save();
+    ctx.globalAlpha = p * fadeOut;
+    drawJoyCon(W * 0.5 - 150, H * 0.36 + (1 - p) * 40, 0.82, { side: 'left', tilt: -0.14 });
+    drawJoyCon(W * 0.5 + 150, H * 0.36 + (1 - p) * 40, 0.82, { side: 'right', tilt: 0.14 });
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '800 76px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Couch Vibe Coding', W / 2, H * 0.67);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '500 34px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+    ctx.fillText('with a single 49g Nintendo Switch Joy-Con', W / 2, H * 0.745);
+    drawPill(W / 2, H * 0.84, 'Open Source  ·  macOS & Windows  ·  Zero Drivers', '#34d399', 'rgba(52,211,153,0.14)');
+    ctx.restore();
+    return;
+  }
+
+  // Scene 2: Dual-Zone Cursor & Damped Drag (3.0 - 6.8s)
+  if (t < 6.8) {
+    const enter = easeOutCubic(seg(t, 3.0, 3.6));
+    const dragP = easeInOutCubic(seg(t, 4.3, 6.2));
+    const moveP = easeInOutCubic(seg(t, 3.3, 4.2));
+    const curX = lerp(300, 175, moveP) + dragP * 760;
+    const curY = lerp(520, 355, moveP);
+
+    ctx.save();
+    ctx.globalAlpha = enter;
+    drawDesktopWindow(120, 155, 1140, 620, 'VS Code — session.ts', 'ide', { selectProg: dragP });
+    drawCursor(curX, curY);
+    drawJoyCon(1580, 470, 1.12, {
+      side: 'right',
+      stickX: dragP > 0 && dragP < 1 ? 0.65 : (moveP > 0 && moveP < 1 ? -0.45 : 0),
+      stickY: moveP > 0 && moveP < 1 ? 0.5 : 0,
+      hot: { r: dragP > 0, stick: moveP > 0 },
+    });
+    drawPill(W / 2, 920, 'FPS-Grade Dual-Zone Cursor  +  Hold R for Damped Drag', '#ff6a3d', 'rgba(255,106,61,0.16)');
+    ctx.restore();
+    return;
+  }
+
+  // Scene 3: 6-Way Radial Menu + Wrist Flick Switch (6.8 - 11.4s)
+  if (t < 11.4) {
+    const flickP = easeInOutCubic(seg(t, 9.0, 10.0));
+    const shiftX = -flickP * 1260;
+
+    // IDE slides out left, Agent slides in from right
+    ctx.save();
+    ctx.beginPath(); ctx.rect(100, 120, 1180, 700); ctx.clip();
+    drawDesktopWindow(120 + shiftX, 155, 1140, 620, 'VS Code — session.ts', 'ide', { selectProg: 1 });
+    drawDesktopWindow(1380 + shiftX, 155, 1140, 620, 'AI Coding Agent', 'agent', { pasted: t >= 10.8 });
+    ctx.restore();
+
+    // Radial menu #1 (Copy) from 6.9 to 8.8, #2 (Paste) from 10.1 to 11.2
+    let rScale = 0, rIdx = -1, plusHot = false, stickY = 0, rumble = 0;
+    if (t >= 6.9 && t < 8.8) {
+      rScale = easeOutCubic(seg(t, 6.9, 7.25)) * (1 - easeOutCubic(seg(t, 8.5, 8.8)));
+      plusHot = t < 8.55;
+      if (t >= 7.55) { rIdx = 0; stickY = 0.85; }
+      if (t >= 8.45 && t < 8.75) rumble = 1 - seg(t, 8.45, 8.75);
+      drawRadialMenu(690, 440, rScale, rIdx);
+    } else if (t >= 10.1 && t < 11.3) {
+      rScale = easeOutCubic(seg(t, 10.1, 10.35)) * (1 - easeOutCubic(seg(t, 11.0, 11.3)));
+      plusHot = t < 11.0;
+      if (t >= 10.45) { rIdx = 3; stickY = -0.85; }
+      if (t >= 10.85 && t < 11.15) rumble = 1 - seg(t, 10.85, 11.15);
+      drawRadialMenu(690, 440, rScale, rIdx);
+    }
+
+    const wristTilt = (t >= 8.9 && t <= 9.8) ? Math.sin(seg(t, 8.9, 9.8) * Math.PI) * -0.48 : 0;
+    drawJoyCon(1580, 470, 1.12, {
+      side: 'right',
+      stickY,
+      tilt: wristTilt,
+      rumble,
+      hot: { plus: plusHot, stick: Math.abs(stickY) > 0.1 },
+    });
+
+    const caption = t < 8.9
+      ? 'Hold + for 6-Way Radial Menu  →  Copy (⌘C)'
+      : t < 10.05
+        ? 'Flick Wrist Left  →  Switch Virtual Desktop (6-Axis IMU)'
+        : 'Hold +  →  Paste (⌘V) Directly into AI Agent';
+    drawPill(W / 2, 920, caption, t >= 8.9 && t < 10.05 ? '#38bdf8' : '#ff6a3d', t >= 8.9 && t < 10.05 ? 'rgba(56,189,248,0.16)' : 'rgba(255,106,61,0.16)');
+    return;
+  }
+
+  // Scene 4: Voice Dictation + Enter Send (11.4 - 15.2s)
+  if (t < 15.2) {
+    const listening = t >= 11.6 && t < 14.0;
+    const voiceProg = easeInOutCubic(seg(t, 11.8, 13.9));
+    const pressA = t >= 14.1 && t < 14.45;
+    const sent = t >= 14.25;
+    const rumble = (t >= 11.6 && t < 11.9) ? 1 - seg(t, 11.6, 11.9) : 0;
+
+    drawDesktopWindow(120, 155, 1140, 620, 'AI Coding Agent', 'agent', {
+      pasted: true,
+      listening,
+      voiceProg,
+      sent,
+      t,
+    });
+    drawJoyCon(1580, 470, 1.12, {
+      side: 'right',
+      rumble,
+      hot: { zr: listening, a: pressA },
+    });
+    drawPill(
+      W / 2,
+      920,
+      sent ? 'Tap A (Enter)  →  Prompt Shipped from the Couch' : 'Hold ZR  →  Voice Dictation (Wispr Flow / Superwhisper / Any ASR)',
+      sent ? '#34d399' : '#ff6a3d',
+      sent ? 'rgba(52,211,153,0.16)' : 'rgba(255,106,61,0.16)',
+    );
+    return;
+  }
+
+  // Scene 5: Outro (15.2 - 18.0s)
+  const p = easeOutCubic(seg(t, 15.2, 16.0));
+  ctx.save();
+  ctx.globalAlpha = p;
+  drawJoyCon(W * 0.5 - 170, H * 0.35, 0.85, { side: 'left', tilt: -0.15 });
+  drawJoyCon(W * 0.5 + 170, H * 0.35, 0.85, { side: 'right', tilt: 0.15 });
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 80px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('JoyCon-Couch', W / 2, H * 0.66);
+  ctx.fillStyle = '#9ca3af';
+  ctx.font = '500 32px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+  ctx.fillText('Left & Right Hot-Swap  ·  Built-in Web Settings  ·  HD Rumble', W / 2, H * 0.735);
+  drawPill(W / 2, H * 0.835, 'MIT Open Source  ·  macOS & Windows', '#34d399', 'rgba(52,211,153,0.16)');
+  ctx.restore();
+};
+
+// Default preview frame (for static cover)
+window.renderFrame(7.85);
+</script>
+</body>
+</html>

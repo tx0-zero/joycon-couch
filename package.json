@@ -1,0 +1,27 @@
+{
+  "name": "joycon-couch",
+  "version": "0.2.0",
+  "description": "Turn a single 49g Nintendo Switch Joy-Con (L or R) into a couch vibe-coding & voice-dictation mouse with FPS-grade cursor curve, 6-way radial menu, wrist-flick workspace switching, and HD rumble (macOS & Windows).",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "joycon",
+    "nintendo-switch",
+    "mouse",
+    "voice-dictation",
+    "vibe-coding",
+    "wispr-flow",
+    "superwhisper",
+    "radial-menu",
+    "macos",
+    "windows"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node build/cli.mjs",
+    "test": "node build/test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
