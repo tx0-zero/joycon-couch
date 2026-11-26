@@ -52,6 +52,8 @@ export type KeyComboId =
   | 'cut'
   | 'select_all'
   | 'backspace'
+  | 'clear_all'
+  | 'screenshot'
   | 'close_tab'
   | 'switch_window'
   | 'mission_control'

@@ -87,6 +87,7 @@ class WinInput:
             "cut": (VK_CONTROL, 0x58),
             "select_all": (VK_CONTROL, 0x41),
             "backspace": (0x08,),
+            "screenshot": (VK_LWIN, 0x10, 0x53),
             "close_tab": (VK_CONTROL, 0x57),
             "switch_window": (VK_MENU, VK_TAB),
             "mission_control": (VK_LWIN, VK_TAB),
@@ -99,6 +100,11 @@ class WinInput:
             "voice_win_h": (VK_LWIN, 0x48),
             "voice_f13": (0x7C,),
         }
+        if combo == "clear_all":
+            self._combo(VK_CONTROL, 0x41)
+            time.sleep(0.03)
+            self._combo(0x08)
+            return
         vks = mapping.get(combo)
         if vks:
             self._combo(*vks)
@@ -264,6 +270,7 @@ class JoyConWinBridge:
                     nx = max(-1.0, min(1.0, (rx - cx) / 1350.0))
                     ny = max(-1.0, min(1.0, (ry - cy) / 1350.0))
                     ax, ay, az, gx, gy, gz = struct.unpack_from("<hhhhhh", bytes(data), 13)
+                    imu_sign = -1.0 if self.side == "left" else 1.0
                     buttons = (
                         {
                             "y": bool(b5 & 0x08),
@@ -303,7 +310,7 @@ class JoyConWinBridge:
                                 "stickY": ny,
                                 "buttons": buttons,
                                 "accel": {"x": ax * 0.000244, "y": ay * 0.000244, "z": az * 0.000244},
-                                "gyro": {"x": gx * 0.06103, "y": gy * 0.06103, "z": gz * 0.06103},
+                                "gyro": {"x": gx * 0.06103 * imu_sign, "y": gy * 0.06103 * imu_sign, "z": gz * 0.06103 * imu_sign},
                             },
                         }
                     )

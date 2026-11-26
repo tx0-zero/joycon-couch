@@ -18,7 +18,14 @@ const a1 = m.process(frame({ stickX: 0.8, buttons: btns({ r: true }) }), cfg, { 
 assert.ok(a1.some((x) => x.type === 'mouseDown' && x.button === 'left'));
 assert.ok(a1.some((x) => x.type === 'mouseMove' && x.dx > 0));
 
-const g1 = m.process(frame({ ts: 2500, buttons: btns({ r: false }), gyro: { x: 0, y: 0, z: 380 }, accel: { x: 0, y: 0, z: 1 } }), cfg, { isRecording: false, isBusy: false });
-assert.ok(g1.some((x) => x.type === 'keyCombo' && x.combo === 'desktop_left'));
+// 单帧尖峰（放桌碰撞）不应误触撤销
+const spike = m.process(frame({ ts: 2400, buttons: btns({ r: false }), gyro: { x: 0, y: 0, z: 500 }, accel: { x: 0, y: 0, z: 1 } }), cfg, { isRecording: false, isBusy: false });
+assert.ok(!spike.some((x) => x.type === 'keyCombo'));
+
+// 连续 3 帧大幅度左甩（~50ms）才触发撤销
+m.process(frame({ ts: 2500, buttons: btns({ r: false }), gyro: { x: 0, y: 0, z: 480 }, accel: { x: 0, y: 0, z: 1 } }), cfg, { isRecording: false, isBusy: false });
+m.process(frame({ ts: 2516, buttons: btns({ r: false }), gyro: { x: 0, y: 0, z: 480 }, accel: { x: 0, y: 0, z: 1 } }), cfg, { isRecording: false, isBusy: false });
+const g1 = m.process(frame({ ts: 2532, buttons: btns({ r: false }), gyro: { x: 0, y: 0, z: 480 }, accel: { x: 0, y: 0, z: 1 } }), cfg, { isRecording: false, isBusy: false });
+assert.ok(g1.some((x) => x.type === 'keyCombo' && x.combo === 'undo'));
 
 console.log('✓ joycon-couch 单元测试全部通过');

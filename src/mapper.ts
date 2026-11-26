@@ -4,10 +4,10 @@ import type { JoyConAction, JoyConButtons, JoyConFrame, JoyConSettings, KeyCombo
 export const RADIAL_SECTORS: { combo: KeyComboId; label: string; key: string }[] = [
   { combo: 'copy', label: '复制', key: '⌘C' },
   { combo: 'select_all', label: '全选', key: '⌘A' },
-  { combo: 'cut', label: '剪切', key: '⌘X' },
+  { combo: 'screenshot', label: '截图', key: '⌘⌃⇧4' },
   { combo: 'paste', label: '粘贴', key: '⌘V' },
   { combo: 'close_tab', label: '关标签', key: '⌘W' },
-  { combo: 'backspace', label: '删除', key: '⌫' },
+  { combo: 'clear_all', label: '清空', key: '⌘A⌫' },
 ];
 
 export function radialIndexFromStick(x: number, y: number, threshold = 0.32): number {
@@ -91,6 +91,10 @@ export class JoyConMapper {
   private leftDown = false;
   private voiceHeld = false;
   private lastGestureAt = 0;
+  private yawStreak = 0;
+  private yawStreakSign = 0;
+  private lastYawFrameAt = 0;
+  private impactQuietUntil = 0;
   private shakeHits = 0;
   private lastShakeHitAt = 0;
 
@@ -103,10 +107,15 @@ export class JoyConMapper {
   private smoothX = 0;
   private smoothY = 0;
   private edgeHoldStart = 0;
-  // + 键轮盘状态机（短按撤销，按住 >= 170ms 弹出 6 方向轮盘）
+  // + 键轮盘状态机（短按退格删除，按住 >= 170ms 弹出 6 方向轮盘）
   private plusDownAt = 0;
   private radialOpen = false;
   private radialIdx = -1;
+  // 松开轮盘后等待摇杆回中，防止大拇指还没松开摇杆导致光标乱跑
+  private waitStickNeutral = false;
+  // Home / 截图键：短按 = 区域截图进剪贴板，长按 >= 450ms = 锁定/解锁防误触
+  private homeDownAt = 0;
+  private homeLongFired = false;
 
   get isLocked() {
     return this.locked;
@@ -148,6 +157,9 @@ export class JoyConMapper {
       actions.push({ type: 'radialClose' });
     }
     this.plusDownAt = 0;
+    this.waitStickNeutral = false;
+    this.homeDownAt = 0;
+    this.homeLongFired = false;
     this.prev = { ...EMPTY_BUTTONS };
     this.accX = 0;
     this.accY = 0;
@@ -174,25 +186,47 @@ export class JoyConMapper {
       return actions;
     }
 
-    // Home 键随时可切换防误触锁
+    // Home / 截图键：
+    // - 锁定状态下：短按或长按立即解锁
+    // - 解锁状态下：短按 = 区域截图进剪贴板（不碰摇杆、光标不乱跑），长按 >= 450ms = 锁定防误触
     if (pressed('home')) {
-      this.locked = !this.locked;
-      if (this.locked && this.leftDown) {
+      if (this.locked) {
+        this.locked = false;
+        this.homeDownAt = 0;
+        this.homeLongFired = true;
+        if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
+        actions.push({ type: 'notice', title: 'Joy-Con 已解锁', detail: '已恢复光标与语音控制' });
+        this.prev = { ...cur };
+        return actions;
+      }
+      this.homeDownAt = frame.ts;
+      this.homeLongFired = false;
+    }
+    if (cur.home && !this.locked && !this.homeLongFired && this.homeDownAt > 0 && frame.ts - this.homeDownAt >= 450) {
+      this.homeLongFired = true;
+      this.homeDownAt = 0;
+      this.locked = true;
+      if (this.leftDown) {
         this.leftDown = false;
         actions.push({ type: 'mouseUp', button: 'left' });
       }
-      if (this.locked && this.voiceHeld) {
+      if (this.voiceHeld) {
         this.voiceHeld = false;
         actions.push({ type: 'voiceStop' });
       }
-      if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: this.locked ? 'double' : 'tap' });
-      actions.push({
-        type: 'notice',
-        title: this.locked ? 'Joy-Con 已锁定' : 'Joy-Con 已解锁',
-        detail: this.locked ? '防误触中，按 Home 恢复' : '已恢复光标与语音控制',
-      });
+      if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'double' });
+      actions.push({ type: 'notice', title: 'Joy-Con 已锁定', detail: '防误触中，按一下 Home/截图键恢复' });
       this.prev = { ...cur };
       return actions;
+    }
+    if (released('home')) {
+      if (!this.homeLongFired && this.homeDownAt > 0 && !this.locked) {
+        if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
+        actions.push({ type: 'keyCombo', combo: 'screenshot' });
+        actions.push({ type: 'notice', title: '区域截图（进剪贴板）', detail: '拖框截图后，上挑手腕直接粘贴' });
+      }
+      this.homeDownAt = 0;
+      this.homeLongFired = false;
     }
 
     if (this.locked) {
@@ -225,10 +259,18 @@ export class JoyConMapper {
         this.radialOpen = false;
         this.radialIdx = -1;
         this.plusDownAt = 0;
+        // 松开轮盘后等摇杆回中，彻底杜绝光标顺着轮盘方向乱跑
+        this.waitStickNeutral = true;
+        this.smoothX = 0;
+        this.smoothY = 0;
+        this.accX = 0;
+        this.accY = 0;
         actions.push({ type: 'radialClose' });
         if (chosen >= 0 && chosen < RADIAL_SECTORS.length) {
+          const sec = RADIAL_SECTORS[chosen];
           if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
-          actions.push({ type: 'keyCombo', combo: RADIAL_SECTORS[chosen].combo });
+          actions.push({ type: 'keyCombo', combo: sec.combo });
+          actions.push({ type: 'notice', title: `轮盘：${sec.label}`, detail: `已发送 ${sec.key}` });
         }
         this.prev = { ...cur };
         return actions;
@@ -236,7 +278,7 @@ export class JoyConMapper {
     }
     if (released('plus') && this.plusDownAt > 0) {
       this.plusDownAt = 0;
-      actions.push({ type: 'keyCombo', combo: 'undo' });
+      actions.push({ type: 'keyCombo', combo: 'backspace' });
     }
 
     // 1. 摇杆按下（R3）：切换光标 / 滚轮模式
@@ -256,7 +298,12 @@ export class JoyConMapper {
 
     // 2. 摇杆位移：径向圆形死区 + 双区精密曲线 + 外圈极速跨屏 + 轻量平滑
     const rawVec = shapeStickVector(frame.stickX, frame.stickY, cfg.deadzone);
-    if (rawVec.mag === 0) {
+    if (this.waitStickNeutral) {
+      if (rawVec.mag === 0) {
+        this.waitStickNeutral = false;
+      }
+    }
+    if (rawVec.mag === 0 || this.waitStickNeutral) {
       this.smoothX = 0;
       this.smoothY = 0;
       this.edgeHoldStart = 0;
@@ -358,36 +405,62 @@ export class JoyConMapper {
       actions.push({ type: 'keyCombo', combo: 'mission_control' });
     }
 
-    // 10. 大幅度体感手势（基于 6 轴 IMU，拖动或录音时不触发防误触）
-    if (cfg.gesturesEnabled && !this.leftDown && frame.gyro && frame.accel) {
+    // 10. 高频正交体感手势（硬件层已统一归一化左右手坐标系，此处逻辑左右手 100% 共享）：
+    // - 放桌防误触：检测到桌面撞击加速度尖峰（> 2.8g）后静默 260ms，过滤放回桌面的瞬态震动
+    // - 左甩手腕（yaw > 440 连续 >= 3 帧 / ~50ms）：撤销（⌘Z，刚说错一整句瞬间撤回）
+    // - 右甩手腕（yaw < -440 连续 >= 3 帧 / ~50ms）：切换上一个窗口（⌘Tab，浏览器与 Agent 间秒切）
+    // - 上挑手腕（使用 x/y 平面合角速度，兼容正握/侧握/躺姿斜握，避免单轴分摊漏检）：粘贴（⌘V）
+    if (cfg.gesturesEnabled && !this.leftDown && !ctx.isRecording && frame.gyro && frame.accel) {
       const now = frame.ts;
-      if (now - this.lastGestureAt > 900) {
-        // 快速甩手腕（Yaw/Roll 峰值 > 340 deg/s）切换左右虚拟桌面
-        if (frame.gyro.z > 340) {
-          this.lastGestureAt = now;
-          if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
-          actions.push({ type: 'keyCombo', combo: 'desktop_left' });
-        } else if (frame.gyro.z < -340) {
-          this.lastGestureAt = now;
-          if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
-          actions.push({ type: 'keyCombo', combo: 'desktop_right' });
-        } else {
-          // 用力摇晃检测（连续两次合加速度 > 2.8g）
-          const mag = Math.hypot(frame.accel.x, frame.accel.y, frame.accel.z);
-          if (mag > 2.8) {
-            if (now - this.lastShakeHitAt < 350) this.shakeHits++;
-            else this.shakeHits = 1;
-            this.lastShakeHitAt = now;
-            if (this.shakeHits >= 2) {
-              this.shakeHits = 0;
-              this.lastGestureAt = now;
-              if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'double' });
-              if (ctx.isRecording || ctx.isBusy) actions.push({ type: 'voiceCancel' });
-              else actions.push({ type: 'keyCombo', combo: 'undo' });
+      const accelMag = Math.hypot(frame.accel.x, frame.accel.y, frame.accel.z);
+      if (accelMag > 2.8) {
+        this.impactQuietUntil = now + 260;
+        this.yawStreak = 0;
+        this.yawStreakSign = 0;
+      } else if (now >= this.impactQuietUntil && now - this.lastGestureAt > 950) {
+        const yaw = frame.gyro.z;
+        const absYaw = Math.abs(yaw);
+        const pitchMag = Math.hypot(frame.gyro.x, frame.gyro.y);
+
+        if (absYaw > 440 && absYaw > pitchMag * 1.6) {
+          const sign = yaw > 0 ? 1 : -1;
+          if (sign === this.yawStreakSign && now - this.lastYawFrameAt <= 70) {
+            this.yawStreak += 1;
+          } else {
+            this.yawStreak = 1;
+            this.yawStreakSign = sign;
+          }
+          this.lastYawFrameAt = now;
+
+          if (this.yawStreak >= 3) {
+            this.yawStreak = 0;
+            this.yawStreakSign = 0;
+            this.lastGestureAt = now;
+            if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
+            if (sign > 0) {
+              actions.push({ type: 'keyCombo', combo: 'undo' });
+              actions.push({ type: 'notice', title: '左甩手腕：撤销', detail: '已发送 ⌘Z' });
+            } else {
+              actions.push({ type: 'keyCombo', combo: 'switch_window' });
             }
           }
+        } else {
+          this.yawStreak = 0;
+          this.yawStreakSign = 0;
+          if (pitchMag > 265 && pitchMag > absYaw * 1.25) {
+            this.lastGestureAt = now;
+            if (cfg.rumbleEnabled) actions.push({ type: 'rumble', pattern: 'tap' });
+            actions.push({ type: 'keyCombo', combo: 'paste' });
+            actions.push({ type: 'notice', title: '上挑手腕：粘贴', detail: '已发送 ⌘V（文字 / 截图）' });
+          }
         }
+      } else {
+        this.yawStreak = 0;
+        this.yawStreakSign = 0;
       }
+    } else {
+      this.yawStreak = 0;
+      this.yawStreakSign = 0;
     }
 
     this.prev = { ...cur };

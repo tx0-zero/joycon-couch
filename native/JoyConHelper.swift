@@ -123,15 +123,19 @@ final class MouseAndKeyController {
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) else { return }
         down.flags = flags
-        up.flags = []
+        up.flags = flags
         down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
-        if !flags.isEmpty {
-            // 复位系统修饰键状态，防止 Control/Command 残留导致后续左键变成右键菜单
-            if let reset = CGEvent(keyboardEventSource: nil, virtualKey: 59, keyDown: false) {
-                reset.type = .flagsChanged
-                reset.flags = []
-                reset.post(tap: .cghidEventTap)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
+            up.post(tap: .cghidEventTap)
+            if !flags.isEmpty {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) {
+                    // 复位系统修饰键状态，防止 Control/Command 残留导致后续左键变成右键菜单
+                    if let reset = CGEvent(keyboardEventSource: nil, virtualKey: 59, keyDown: false) {
+                        reset.type = .flagsChanged
+                        reset.flags = []
+                        reset.post(tap: .cghidEventTap)
+                    }
+                }
             }
         }
     }
@@ -154,6 +158,14 @@ final class MouseAndKeyController {
             sendKey(0, flags: .maskCommand) // Cmd+A
         case "backspace":
             sendKey(51) // Delete / Backspace
+        case "clear_all":
+            sendKey(0, flags: .maskCommand) // Cmd+A
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                self.sendKey(51) // Backspace
+            }
+        case "screenshot":
+            // macOS 区域框选截图直接进剪贴板（不生成桌面文件），配合上挑手腕直接粘贴上传
+            sendKey(21, flags: [.maskCommand, .maskControl, .maskShift]) // Cmd+Ctrl+Shift+4
         case "close_tab":
             sendKey(13, flags: .maskCommand) // Cmd+W
         case "switch_window":
@@ -165,15 +177,15 @@ final class MouseAndKeyController {
         case "desktop_right":
             sendKey(124, flags: .maskControl) // Ctrl+Right
         case "voice_hotkey", "voice_ctrl_alt_space":
-            sendKey(49, flags: [.maskControl, .maskAlternate]) // Ctrl+Opt+Space
+            sendKey(49, flags: [.maskControl, .maskAlternate])
         case "voice_opt_space":
-            sendKey(49, flags: .maskAlternate) // Opt+Space
+            sendKey(49, flags: .maskAlternate)
         case "voice_cmd_shift_space":
-            sendKey(49, flags: [.maskCommand, .maskShift]) // Cmd+Shift+Space
+            sendKey(49, flags: [.maskCommand, .maskShift])
         case "voice_win_h":
             sendKey(4, flags: .maskCommand)
         case "voice_f13":
-            sendKey(105) // F13
+            sendKey(105)
         default:
             break
         }
@@ -397,13 +409,18 @@ final class JoyConHIDBridge {
         let normX = max(-1.0, min(1.0, (rawX - centerX) / 1350.0))
         let normY = max(-1.0, min(1.0, (rawY - centerY) / 1350.0))
 
-        // 6 轴 IMU（bytes 13..24 为第 1 组采样）
+        // 6 轴 IMU（bytes 13..24 为第 1 组采样），并在硬件桥接层统一归一化左右手坐标系：
+        // 归一化后无论左手还是右手：左甩手腕 gz > 0，右甩手腕 gz < 0，上挑手腕 gy > 0
         let ax = Double(readInt16LE(report, 13)) * 0.000244
         let ay = Double(readInt16LE(report, 15)) * 0.000244
         let az = Double(readInt16LE(report, 17)) * 0.000244
-        let gx = Double(readInt16LE(report, 19)) * 0.06103
-        let gy = Double(readInt16LE(report, 21)) * 0.06103
-        let gz = Double(readInt16LE(report, 23)) * 0.06103
+        let rawGx = Double(readInt16LE(report, 19)) * 0.06103
+        let rawGy = Double(readInt16LE(report, 21)) * 0.06103
+        let rawGz = Double(readInt16LE(report, 23)) * 0.06103
+        let isLeft = (connectedSide == "left")
+        let gx = isLeft ? -rawGx : rawGx
+        let gy = isLeft ? -rawGy : rawGy
+        let gz = isLeft ? -rawGz : rawGz
 
         // 左右手完全对称映射到统一逻辑按键：
         // 左手：L->r, ZL->zr, →->a(回车), ↓->b(右键/取消), ↑->x(切窗口), ←->y(概览), - ->plus(撤销/轮盘), L3->rStick(切滚轮), 截图键->home(锁定)
